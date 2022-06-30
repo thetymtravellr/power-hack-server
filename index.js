@@ -72,7 +72,6 @@ async function run() {
       const { email, password } = req.body;
       const filter = { email: email };
       const user = await usersCollection.findOne(filter);
-      console.log(user);
 
       if (!user) {
         return res.status(400).send({ message: "no user found" });
@@ -151,7 +150,7 @@ async function run() {
         res.status(403).send({ message: "unauthorized access" });
       }
     });
-    
+
     //update data
     app.put("/update-billing/:id", async (req, res) => {
       const id = req.params.id;
