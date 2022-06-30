@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 require("dotenv").config();
 
 const app = express();
@@ -18,6 +19,20 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 });
 
+function verifyToken(token) {
+  let email;
+
+  jwt.verify(token, process.env.TOKEN_SECRET, function (err, decoded) {
+    if (err) {
+      email = "Invalid email";
+    }
+    if (decoded) {
+      email = decoded;
+    }
+  });
+  return email;
+}
+
 async function run() {
   try {
     await client.connect();
@@ -25,6 +40,54 @@ async function run() {
     const billingDataCollection = client
       .db("powerHackData")
       .collection("billingData");
+
+    const usersCollection = client.db("powerHackData").collection("users");
+
+    //create user
+    app.post("/registration", async (req, res) => {
+      const { fullname, email, password } = req.body;
+      const findUser = await usersCollection.findOne({ email });
+      if (!findUser) {
+        const salt = await bcrypt.genSalt();
+        const hashedPassword = await bcrypt.hash(password, salt);
+        const user = {
+          fullname,
+          email,
+          password: hashedPassword,
+        };
+        const result = await usersCollection.insertOne(user);
+        if (result.acknowledged) {
+          const token = jwt.sign(email, process.env.TOKEN_SECRET);
+          res.status(200).send({ message: "success", token });
+        } else {
+          res.status(500).send({ message: "Something went wrong" });
+        }
+      } else {
+        res.status(400).send({ message: "User already exist" });
+      }
+    });
+
+    //get users
+    app.post("/login", async (req, res) => {
+      const { email, password } = req.body;
+      const filter = { email: email };
+      const user = usersCollection.findOne(filter);
+
+      if (!user) {
+        return res.status(400).send({ message: "no user found" });
+      }
+      try {
+        const matched = await bcrypt.compare(password, user.password);
+        if (matched) {
+          const token = jwt.sign(email, process.env.TOKEN_SECRET);
+          res.status(200).send({ message: "success", token });
+        } else {
+          res.status(403).send({ message: "forbidden" });
+        }
+      } catch {
+        res.status(500).send({ message: "invalid password" });
+      }
+    });
 
     // create data
     app.post("/add-billing", async (req, res) => {
@@ -39,16 +102,54 @@ async function run() {
 
     // get data
     app.get("/billing-list", async (req, res) => {
-      const page = Number(req.query.page);
-      const cursor = billingDataCollection.find({}).sort({ _id: -1 });
-      const result = await cursor
-        .skip(10 * page)
-        .limit(10)
-        .toArray();
-      const dataCount = await billingDataCollection.estimatedDocumentCount();
-      res.send({ message: "success", data: result, dataCount });
-    });
+      const email = req.query.email;
+      const tokenInfo = req.headers.authorization;
+      const decoded = verifyToken(tokenInfo);
 
+      if (decoded === email) {
+        const page = Number(req.query.page);
+        if (req.query.q) {
+          const cursor = billingDataCollection.find({
+            $text: { $search: req.query.q },
+          });
+          const calculateAmountArray = await billingDataCollection
+            .find({})
+            .toArray();
+          const result = await cursor
+            .skip(10 * page)
+            .limit(10)
+            .toArray();
+          const dataCount =
+            await billingDataCollection.estimatedDocumentCount();
+          res.status(200).send({
+            message: "success",
+            data: result,
+            dataCount,
+            calculateAmountArray,
+          });
+        } else {
+          const query = { addedBy: email };
+          const cursor = billingDataCollection.find(query).sort({ _id: -1 });
+          const calculateAmountArray = await billingDataCollection
+            .find({})
+            .toArray();
+          const result = await cursor
+            .skip(10 * page)
+            .limit(10)
+            .toArray();
+          const dataCount =
+            await billingDataCollection.estimatedDocumentCount();
+          res.status(200).send({
+            message: "success",
+            data: result,
+            dataCount,
+            calculateAmountArray,
+          });
+        }
+      } else {
+        res.status(403).send({ message: "unauthorized access" });
+      }
+    });
     //update data
     app.put("/update-billing/:id", async (req, res) => {
       const id = req.params.id;
