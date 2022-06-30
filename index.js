@@ -71,7 +71,8 @@ async function run() {
     app.post("/login", async (req, res) => {
       const { email, password } = req.body;
       const filter = { email: email };
-      const user = usersCollection.findOne(filter);
+      const user = await usersCollection.findOne(filter);
+      console.log(user);
 
       if (!user) {
         return res.status(400).send({ message: "no user found" });
@@ -80,7 +81,7 @@ async function run() {
         const matched = await bcrypt.compare(password, user.password);
         if (matched) {
           const token = jwt.sign(email, process.env.TOKEN_SECRET);
-          res.status(200).send({ message: "success", token });
+          res.status(200).send({ message: "success", token, email });
         } else {
           res.status(403).send({ message: "forbidden" });
         }
@@ -113,7 +114,7 @@ async function run() {
             $text: { $search: req.query.q },
           });
           const calculateAmountArray = await billingDataCollection
-            .find({})
+            .find({ addedBy: email })
             .toArray();
           const result = await cursor
             .skip(10 * page)
@@ -131,7 +132,7 @@ async function run() {
           const query = { addedBy: email };
           const cursor = billingDataCollection.find(query).sort({ _id: -1 });
           const calculateAmountArray = await billingDataCollection
-            .find({})
+            .find({ addedBy: email })
             .toArray();
           const result = await cursor
             .skip(10 * page)
@@ -150,6 +151,7 @@ async function run() {
         res.status(403).send({ message: "unauthorized access" });
       }
     });
+    
     //update data
     app.put("/update-billing/:id", async (req, res) => {
       const id = req.params.id;
