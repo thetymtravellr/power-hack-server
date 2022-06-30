@@ -19,6 +19,14 @@ async function run(){
 
         const billingDataCollection = client.db('powerHackData').collection('billingData');
 
+        // create data
+        app.post('/add-billing',async (req,res) => {
+            const billingData = req.body;
+            const result = await billingDataCollection.insertOne(billingData);
+            res.send(result)
+        })
+
+        // get data
         app.get('/billing-list', async (req,res) => {
             const page = Number(req.query.page);
             const cursor = billingDataCollection.find({})
@@ -26,9 +34,20 @@ async function run(){
             const dataCount = await billingDataCollection.estimatedDocumentCount();
             res.send({message: 'success', data: result, dataCount})
         })
+
+        //update data
+        app.put('/update-billing/:id',(req,res)=>{
+            const id = req.params.id
+            console.log(id);
+        })
+
+        //delete data
+        app.delete('/delete-billing/:id',(req,res) => {
+            const id = req.params.id
+            console.log(id);
+        })
     }
     finally{
-
     }
 }
 
