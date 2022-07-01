@@ -190,7 +190,11 @@ async function run() {
         updateData,
         options
       );
-      res.send(result);
+      if (result.acknowledged) {
+        res.status(200).send({ message: "successfully updated" });
+      } else {
+        res.status(400).send({ message: "Something went wrong" });
+      }
     });
 
     //delete data
