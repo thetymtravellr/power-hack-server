@@ -19,6 +19,7 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 });
 
+// function for verify token
 function verifyToken(token) {
   let email;
 
@@ -45,11 +46,15 @@ async function run() {
 
     //create user
     app.post("/registration", async (req, res) => {
+      //get user information from user input
       const { fullname, email, password } = req.body;
+      //check if email is already used
       const findUser = await usersCollection.findOne({ email });
       if (!findUser) {
+        //create a hashed password 
         const salt = await bcrypt.genSalt();
         const hashedPassword = await bcrypt.hash(password, salt);
+        //create user object from hashed password and user name and email
         const user = {
           fullname,
           email,
@@ -57,8 +62,9 @@ async function run() {
         };
         const result = await usersCollection.insertOne(user);
         if (result.acknowledged) {
+          // assign a token if user is successfully registered
           const token = jwt.sign(email, process.env.TOKEN_SECRET);
-          res.status(200).send({ message: "success", token });
+          res.status(200).send({ message: "success", token, email });
         } else {
           res.status(500).send({ message: "Something went wrong" });
         }
@@ -69,16 +75,20 @@ async function run() {
 
     //get users
     app.post("/login", async (req, res) => {
+      //get user info from user input
       const { email, password } = req.body;
       const filter = { email: email };
+      // check if user is registered yet
       const user = await usersCollection.findOne(filter);
 
       if (!user) {
         return res.status(400).send({ message: "no user found" });
       }
       try {
+        // match password from user input and database
         const matched = await bcrypt.compare(password, user.password);
         if (matched) {
+          //if user is successfully logged in 
           const token = jwt.sign(email, process.env.TOKEN_SECRET);
           res.status(200).send({ message: "success", token, email });
         } else {
@@ -91,6 +101,7 @@ async function run() {
 
     // create data
     app.post("/add-billing", async (req, res) => {
+      //billing data from user input
       const billingData = req.body;
       const result = await billingDataCollection.insertOne(billingData);
       if (result.acknowledged) {
@@ -102,16 +113,20 @@ async function run() {
 
     // get data
     app.get("/billing-list", async (req, res) => {
+      //get user email and token
       const email = req.query.email;
       const tokenInfo = req.headers.authorization;
+      //verify token
       const decoded = verifyToken(tokenInfo);
-
+      
       if (decoded === email) {
         const page = Number(req.query.page);
+        //if user search for something he will get search value at top
         if (req.query.q) {
           const cursor = billingDataCollection.find({
             $text: { $search: req.query.q },
           });
+          //additional data for calculating total paid amount
           const calculateAmountArray = await billingDataCollection
             .find({ addedBy: email })
             .toArray();
@@ -127,9 +142,12 @@ async function run() {
             dataCount,
             calculateAmountArray,
           });
+          // if user didn't search he will get all data he added
         } else {
           const query = { addedBy: email };
+          //query by email and reverse the value
           const cursor = billingDataCollection.find(query).sort({ _id: -1 });
+          // additional data for calculating amount
           const calculateAmountArray = await billingDataCollection
             .find({ addedBy: email })
             .toArray();
@@ -137,6 +155,7 @@ async function run() {
             .skip(10 * page)
             .limit(10)
             .toArray();
+            //get total data added by user to create pagination
           const dataCount =
             await billingDataCollection.estimatedDocumentCount();
           res.status(200).send({
@@ -146,6 +165,7 @@ async function run() {
             calculateAmountArray,
           });
         }
+        //if user is not verified
       } else {
         res.status(403).send({ message: "unauthorized access" });
       }
